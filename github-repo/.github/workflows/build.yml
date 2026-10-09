@@ -1,0 +1,58 @@
+name: build
+on:
+  push:
+    paths: ['incoming/*.zip']
+  workflow_dispatch:
+    inputs:
+      zip_path:
+        description: 'path of the zip inside the repo (e.g. incoming/x.zip)'
+        required: true
+permissions:
+  contents: write
+  packages: read
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Find zip
+        id: zip
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            Z="${{ github.event.inputs.zip_path }}"
+          else
+            Z=$(git show --name-only --pretty=format: "$GITHUB_SHA" -- 'incoming/*.zip' | grep . | head -n1)
+          fi
+          test -n "$Z" && test -f "$Z" || { echo "ERROR: zip not found ($Z)"; exit 1; }
+          echo "path=$Z" >> "$GITHUB_OUTPUT"
+      - name: Pull toolchain image
+        run: |
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker pull "ghcr.io/${OWNER}/ps4-toolchain:latest"
+      - name: Build inside toolchain
+        run: |
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          mkdir -p out
+          docker run --rm -v "$PWD:/work" -w /work "ghcr.io/${OWNER}/ps4-toolchain:latest" \
+            bash scripts/build.sh "/work/${{ steps.zip.outputs.path }}" /work/out
+      - name: Publish release
+        if: always() && steps.zip.outcome == 'success'
+        run: |
+          test -f out/status.json || { echo "ERROR: out/status.json missing (build step did not run)"; exit 1; }
+          TAG="build-${{ github.run_number }}"
+          OK=$(jq -r .ok out/status.json)
+          shopt -s nullglob
+          FILES=(out/status.json out/build.log out/errors.txt out/*.elf)
+          gh release delete "$TAG" --cleanup-tag -y || true
+          if [ "$OK" = true ]; then T="$TAG (OK)"; else T="$TAG (FAILED)"; fi
+          gh release create "$TAG" "${FILES[@]}" --target "$GITHUB_SHA" --title "$T" --notes "run ${{ github.run_id }}"
+      - name: Fail job if build failed
+        if: always() && steps.zip.outcome == 'success'
+        run: test "$(jq -r .ok out/status.json)" = true
