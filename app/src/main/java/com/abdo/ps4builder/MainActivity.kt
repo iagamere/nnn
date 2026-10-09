@@ -127,9 +127,7 @@ fun PayloadApp() {
             if (busy && runId != null) OutlinedButton(onClick = { scope.launch { try { api.cancelRun(owner, repo, token, runId!!); stage = tr(english, "أُرسل طلب الإلغاء إلى GitHub", "Cancellation requested from GitHub") } catch (e: Exception) { stage = "Cancel error: ${e.message}" } } }, modifier = Modifier.fillMaxWidth()) { Text(tr(english, "إلغاء البناء", "Cancel build")) }
             Text(tr(english, "الحالة", "Status") + ": $stage")
             if (selectedElf != null) {
-                Text("ELF: ${selectedElf!!.name}
-Version: $elfVersion
-Size: ${formatSize(elfSize)}")
+                Text("ELF: ${selectedElf!!.name}\nVersion: $elfVersion\nSize: ${formatSize(elfSize)}")
                 Button(onClick = { scope.launch {
                     try { stage = tr(english, "جارٍ الإرسال إلى BinLoader...", "Sending to BinLoader..."); withContext(Dispatchers.IO) { sendElf(ps4Ip, selectedElf!!) }; delay(3000); infoResult = withContext(Dispatchers.IO) { queryVersion(ps4Ip) }; stage = infoResult }
                     catch (e: Exception) { infoResult = "${tr(english, "لم يستجب السيرفر أو فشل الاتصال", "Server did not respond or connection failed")}: ${e.message}"; stage = infoResult }
@@ -139,11 +137,7 @@ Size: ${formatSize(elfSize)}")
             if (errorText.isNotBlank()) {
                 Text(tr(english, "أخطاء البناء", "Build errors"), style = MaterialTheme.typography.titleMedium)
                 Text(errorText)
-                Button(onClick = { val clip = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager; clip.setPrimaryClip(ClipData.newPlainText("build diagnostics", errorText + "
-
---- Last 200 build log lines ---
-" + logText.lines().takeLast(200).joinToString("
-"))) }) { Text(tr(english, "انسخ السجل", "Copy diagnostics")) }
+                Button(onClick = { val clip = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager; clip.setPrimaryClip(ClipData.newPlainText("build diagnostics", errorText + "\n\n--- Last 200 build log lines ---\n" + logText.lines().takeLast(200).joinToString("\n"))) }) { Text(tr(english, "انسخ السجل", "Copy diagnostics")) }
             }
             if (logText.isNotBlank()) {
                 var showLog by remember { mutableStateOf(false) }

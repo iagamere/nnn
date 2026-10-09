@@ -19,7 +19,7 @@
 - `status.json` يتضمن `ok`, `version`, `elf`, `time`.
 
 ## 3. تطبيق Android
-افتح مجلد `android/` في Android Studio حديث. المشروع يستخدم Gradle Kotlin DSL، Compose، minSdk 26 وtargetSdk 34. استخدم `./gradlew assembleDebug` بعد توفير Gradle wrapper كامل من Android Studio إذا كانت بيئتك لا تتضمن wrapper JAR. **wrapper JAR غير مضمن هنا** لأن هذا الأرشيف لا يستطيع التحقق من تنزيل binary موثوق به؛ لذلك لا أصف الأرشيف بأنه APK جاهز أو بناء قابل للاختبار فوراً.
+هذا الأرشيف منظّم مثل مشروع `PS4Monitor-v4.0.zip`: ملفات `settings.gradle.kts` و`build.gradle.kts` في الجذر، ومجلد `app/` مباشرة. افتح جذر المشروع في Android Studio حديث. المشروع يستخدم Gradle Kotlin DSL، Compose، minSdk 26 وtargetSdk 34. استخدم `./gradlew assembleDebug` بعد توفير Gradle wrapper كامل من Android Studio إذا كانت بيئتك لا تتضمن wrapper JAR. **wrapper JAR غير مضمن هنا** لأن هذا الأرشيف لا يستطيع التحقق من تنزيل binary موثوق به؛ لذلك لا أصف الأرشيف بأنه APK جاهز أو بناء قابل للاختبار فوراً.
 
 في التطبيق أدخل owner/repo وPAT وعنوان IP. يتم تخزين PAT في EncryptedSharedPreferences، ولا يُكتب في Logcat. التطبيق يرفع ZIP إلى `incoming/<timestamp>-<name>.zip` عبر GitHub Contents API، ويتابع أحدث workflow run، ويعرض diagnostics. الإلغاء يطلب إلغاء GitHub Actions run؛ لا يوقف فوراً عملية Docker إن لم يستجب GitHub.
 

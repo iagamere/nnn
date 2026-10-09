@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.abdo.ps4builder"
-    compileSdk = 35
+    compileSdk = 34
     defaultConfig {
         applicationId = "com.abdo.ps4builder"
         minSdk = 26
