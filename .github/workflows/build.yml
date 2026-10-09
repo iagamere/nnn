@@ -1,0 +1,106 @@
+name: Build PS4 ELF
+on:
+  push:
+    paths:
+      - 'incoming/*.zip'
+  workflow_dispatch:
+permissions:
+  contents: write
+  packages: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/ps4-payload-toolchain:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build source ZIP (or latest incoming ZIP)
+        id: compile
+        shell: bash
+        run: |
+          set +e
+          mkdir -p out source-unpacked
+          ZIP_PATH=""
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            ZIP_PATH=$(python3 - <<'PY'
+          import json, os
+          e=json.load(open(os.environ['GITHUB_EVENT_PATH']))
+          paths=[x.get('filename','') for x in e.get('commits',[]) for x in x.get('added',[])+x.get('modified',[])]
+          z=[p for p in paths if p.startswith('incoming/') and p.endswith('.zip')]
+          print(z[-1] if z else '')
+          PY
+          )
+          fi
+          [[ -f "$ZIP_PATH" ]] || ZIP_PATH=$(find incoming -maxdepth 1 -type f -name '*.zip' 2>/dev/null | sort | tail -n 1)
+          OK=false
+          VERSION=unknown
+          ELF_NAME=""
+          if [[ -z "$ZIP_PATH" || ! -f "$ZIP_PATH" ]]; then
+            echo 'ERROR: no ZIP found in incoming/*.zip. Upload a ZIP or use workflow_dispatch after adding one.' > out/build.log
+          else
+            unzip -q "$ZIP_PATH" -d source-unpacked > out/unzip.log 2>&1
+            unzip_rc=$?
+            SRC=$(find source-unpacked -type f -name CMakeLists.txt -print -quit | xargs -r dirname)
+            if [[ $unzip_rc -ne 0 ]]; then
+              cat out/unzip.log > out/build.log
+            elif [[ -z "$SRC" ]]; then
+              echo 'ERROR: ZIP contains no CMakeLists.txt.' > out/build.log
+            else
+              ( set -e
+                source /opt/pacbrew/ps4/openorbis/ps4vars.sh
+                mkdir -p "$SRC/build"
+                cd "$SRC/build"
+                openorbis-cmake ..
+                make -j"$(nproc)"
+              ) > out/build.log 2>&1
+              rc=$?
+              ELF=$(find "$SRC" -type f -name 'ezremote-server-*.elf' -print -quit)
+              if [[ $rc -eq 0 && -n "$ELF" ]]; then
+                cp "$ELF" out/
+                ELF_NAME=$(basename "$ELF")
+                VERSION=$(basename "$ELF" | sed -E 's/^ezremote-server-(.*)\.elf$/\1/')
+                OK=true
+              else
+                if [[ $rc -eq 0 ]]; then echo 'ERROR: build exited successfully but ezremote-server-<version>.elf was not found.' >> out/build.log; fi
+              fi
+            fi
+          fi
+          python3 - <<'PY'
+          import re, pathlib
+          p=pathlib.Path('out/build.log').read_text(errors='replace').splitlines()
+          hits=[i for i,s in enumerate(p) if re.search(r'\berror\b|undefined reference|cannot find -l|No such file or directory|not found',s,re.I)]
+          keep=set()
+          for i in hits: keep.update(range(max(0,i-3),min(len(p),i+4)))
+          out=[]; last=-2
+          for i in sorted(keep):
+              if i>last+1: out.append('---')
+              out.append(f'{i+1}: {p[i]}'); last=i
+          pathlib.Path('out/errors.txt').write_text('\n'.join(out) if out else 'No matching error lines extracted. See build.log for the complete log.\n')
+          PY
+          python3 - <<PY
+          import json,datetime
+          json.dump({'ok':${OK},'version':'${VERSION}','elf':'${ELF_NAME}','time':datetime.datetime.now(datetime.timezone.utc).isoformat()},open('out/status.json','w'))
+          PY
+          echo "ok=$OK" >> "$GITHUB_OUTPUT"
+      - name: Upload diagnostics artifact on failure
+        if: steps.compile.outputs.ok != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-diagnostics-${{ github.run_number }}
+          path: out/
+          if-no-files-found: error
+      - name: Create release on success
+        if: steps.compile.outputs.ok == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: build-${{ github.run_number }}
+          files: |
+            out/*.elf
+            out/build.log
+            out/status.json
+          fail_on_unmatched_files: true
